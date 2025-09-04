@@ -5,9 +5,12 @@ from pathlib import Path
 from bdeseries.utils import get_data_path
 
 DATA_PATH: Path = get_data_path()
+from bdeseries.download import download
+
 FINANCIAL_ACCOUNTS_PATH: Path = DATA_PATH / "cf"
 
 DATA_PATH.mkdir(parents=True, exist_ok=True)
 FINANCIAL_ACCOUNTS_PATH.mkdir(parents=True, exist_ok=True)
 
 # TODO: Download the full data catalog
+download()
