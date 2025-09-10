@@ -12,5 +12,6 @@ FINANCIAL_ACCOUNTS_PATH: Path = DATA_PATH / "cf"
 DATA_PATH.mkdir(parents=True, exist_ok=True)
 FINANCIAL_ACCOUNTS_PATH.mkdir(parents=True, exist_ok=True)
 
-# TODO: Download the full data catalog
 download()
+
+from bdeseries.generate_catalog import generate_catalog
