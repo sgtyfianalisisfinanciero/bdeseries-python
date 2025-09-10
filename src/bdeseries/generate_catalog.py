@@ -7,6 +7,8 @@
 #' @examples generate_catalog("TE_CF)
 """
 
+# TODO: continue in line 70 of the original R code
+
 import calendar
 from datetime import datetime
 from pathlib import Path
