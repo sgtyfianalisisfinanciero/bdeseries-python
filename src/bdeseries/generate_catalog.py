@@ -44,9 +44,7 @@ def __convert_date(date_str: str) -> datetime:
             year_str: str = date_str[4:]
             month_num: int = datetime.strptime(month_str, "%b").month
             last_day: int = calendar.monthrange(int(year_str), month_num)[1]
-            return datetime.strptime(
-                f"{last_day} {month_str} {year_str}", "%d %b %Y"
-            )
+            return datetime.strptime(f"{last_day} {month_str} {year_str}", "%d %b %Y")
         except Exception as _:
             return pd.NaT
     else:  # interpret as day, abbreviated moth and year
@@ -58,7 +56,6 @@ def __convert_date(date_str: str) -> datetime:
 
 
 def generate_catalog(path: Path | None = None, db: str = ""):
-
     full_path: Path = DATA_PATH / path if path is not None else DATA_PATH
     csv_files: list[Path] = [
         file
@@ -68,9 +65,7 @@ def generate_catalog(path: Path | None = None, db: str = ""):
 
     for file in csv_files:
         print(file.name)
-        data: pd.DataFrame = pd.read_csv(
-            file, encoding="latin1", skipinitialspace=True
-        )
+        data: pd.DataFrame = pd.read_csv(file, encoding="latin1", skipinitialspace=True)
         data = data.tail(len(data.index) - 5)
         data = data.loc[:, ~data.columns.duplicated()]
         data.columns.values[0] = "fecha"

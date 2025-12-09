@@ -47,15 +47,11 @@ async def download_files():
         parameters: list[tuple[str, Path, Path]] = []
         for file in ZIPS:
             url: str = f"{URL}{file}.zip"
-            extract_dir: Path = (
-                DATA_PATH if file != "TE_CF" else DATA_PATH / "cf"
-            )
+            extract_dir: Path = DATA_PATH if file != "TE_CF" else DATA_PATH / "cf"
             filename = Path(tmpdirname) / f"{file}.zip"
             parameters.append((url, extract_dir, filename))
 
-        tasks = [
-            download_file(url, filename) for url, _, filename in parameters
-        ]
+        tasks = [download_file(url, filename) for url, _, filename in parameters]
         await asyncio.gather(*tasks, return_exceptions=True)
 
         for _, extract_dir, filename in parameters:
