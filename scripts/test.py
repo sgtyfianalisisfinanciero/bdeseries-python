@@ -1,7 +1,9 @@
+from pathlib import Path
+
 import bdeseries
 
-print(bdeseries.get_data_path())
+ROOT: Path = Path(__file__).parent.parent
+DATA: Path = ROOT / "data"
 
+bdeseries.set_data_path(DATA)
 bdeseries.initialize(download_catalog=True)
-
-print(bdeseries.get_data_path())

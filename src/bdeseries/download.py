@@ -8,8 +8,6 @@ import aiohttp
 
 from bdeseries.utils.utils import get_data_path
 
-DATA_PATH: Path = get_data_path()
-
 URL: str = "https://www.bde.es/webbe/es/estadisticas/compartido/datos/zip/"
 
 ZIPS: dict[str, str] = {
@@ -49,7 +47,9 @@ async def download_files():
         parameters: list[tuple[str, Path, Path]] = []
         for file in ZIPS:
             url: str = f"{URL}{file}.zip"
-            extract_dir: Path = DATA_PATH if file != "TE_CF" else DATA_PATH / "cf"
+            extract_dir: Path = (
+                get_data_path() if file != "TE_CF" else get_data_path() / "cf"
+            )
             filename = Path(tmpdirname) / f"{file}.zip"
             parameters.append((url, extract_dir, filename))
 
@@ -78,7 +78,7 @@ def download(force_download: bool = False):
     today_date = datetime.today().date()
     modified_today: list[bool] = [
         datetime.fromtimestamp(file.stat().st_mtime).date() == today_date
-        for file in DATA_PATH.iterdir()
+        for file in get_data_path().iterdir()
         if file.suffix == ".csv"
     ]
     already_downloaded_today: bool = all(modified_today)
