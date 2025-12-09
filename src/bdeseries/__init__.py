@@ -1,17 +1,4 @@
-"""When the package is imported, the package specific local data directory is created if it does not exists and the full data catalog is downloaded"""
+from bdeseries.runtime import initialize
+from bdeseries.utils.utils import get_data_path
 
-from pathlib import Path
-
-from bdeseries.utils import get_data_path
-
-DATA_PATH: Path = get_data_path()
-from bdeseries.download import download
-
-FINANCIAL_ACCOUNTS_PATH: Path = DATA_PATH / "cf"
-
-DATA_PATH.mkdir(parents=True, exist_ok=True)
-FINANCIAL_ACCOUNTS_PATH.mkdir(parents=True, exist_ok=True)
-
-download()
-
-from bdeseries.generate_catalog import generate_catalog
+__all__ = ["initialize", "get_data_path"]

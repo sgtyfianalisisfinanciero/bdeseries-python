@@ -6,7 +6,9 @@ from pathlib import Path
 
 import aiohttp
 
-from bdeseries import DATA_PATH
+from bdeseries.utils.utils import get_data_path
+
+DATA_PATH: Path = get_data_path()
 
 URL: str = "https://www.bde.es/webbe/es/estadisticas/compartido/datos/zip/"
 
