@@ -1,73 +1,161 @@
-"""
-#' This function Generate a catalog of the series contained in the csv files located in a given directory passed as argument.
-#' @param directory Character string. The name of the directory that contains the csv files to be processed.
-#' @param db Character string. The name of the database that the series contained in the csv belong to.
-#' @keywords download full banco de españa series
-#' @export
-#' @examples generate_catalog("TE_CF)
-"""
+# #' This function Generate a catalog of the series contained in the csv files located in a given directory passed as argument.
+# #' @param directory Character string. The name of the directory that contains the csv files to be processed.
+# #' @param db Character string. The name of the database that the series contained in the csv belong to.
+# #' @keywords download full banco de españa series
+# #' @export
+# #' @examples generate_catalog("TE_CF)
+# generate_catalog <- function(
+#     directory,
+#     db="") {
 
-# TODO: continue in line 70 of the original R code
+#   .datos_path <- get_data_path()
 
-import calendar
-from datetime import datetime
-from pathlib import Path
+#   message("Generating catalog from ", directory)
 
-import pandas as pd
+#   csv_files <- fs::dir_ls(paste0(.datos_path, "\\", directory), glob="*.csv")
 
-from bdeseries import DATA_PATH
+#   csv_file_counter <- 0
+#   csv_file_total <- length(csv_files)
+#   offset_serie <- 0
 
-MONTHS_TRANSLATE = {
-    "ene": "Jan",
-    "feb": "Feb",
-    "mar": "Mar",
-    "abr": "Apr",
-    "may": "May",
-    "jun": "Jun",
-    "jul": "Jul",
-    "ago": "Aug",
-    "sep": "Sep",
-    "oct": "Oct",
-    "nov": "Nov",
-    "dic": "Dec",
-}
+#   catalogo <- lapply(
+#     X=csv_files,
+#     function(.x) {
+#       cat(
+#         sprintf("\rFicheros procesados: %d \t %d \t - \t %s",
+#                 csv_file_counter,
+#                 csv_file_total,
+#                 scales::number_format(accuracy=0.01, decimal.mark=",", big.mark=".", suffix="%", scale=1e2)(csv_file_counter/csv_file_total)
+#         )
+#       )
 
+#       utils::flush.console()
 
-def __convert_date(date_str: str) -> datetime:
-    date_str: str = date_str.strip()
-    date_len: int = len(date_str)
-    if date_len == 4:  # interpret as a year
-        return datetime.strptime(f"01 01 {date_str}", "%d %m %Y")
-    elif date_len == 8:  # interpret as abbreviated moth and year
-        try:
-            month_str: str = MONTHS_TRANSLATE[date_str[:3].lower()]
-            year_str: str = date_str[4:]
-            month_num: int = datetime.strptime(month_str, "%b").month
-            last_day: int = calendar.monthrange(int(year_str), month_num)[1]
-            return datetime.strptime(f"{last_day} {month_str} {year_str}", "%d %b %Y")
-        except Exception as _:
-            return pd.NaT
-    else:  # interpret as day, abbreviated moth and year
-        try:
-            date_str = f"{date_str[:2]} {MONTHS_TRANSLATE[date_str[3:6].lower()]} {date_str[6:]}"
-            return datetime.strptime(date_str, "%d %b %Y")
-        except Exception as _:
-            return pd.NaT
+#       if (stringr::str_detect(.x, "catalogo")) {
+#         message("Skipping catalogo*.csv")
+#         return()
+#       }
 
+#       csv_datos <- readr::read_csv(
+#         .x,
+#         locale = readr::locale("es",
+#                                encoding = "latin1"),
+#         trim_ws=TRUE,
+#         name_repair="minimal",
+#         show_col_types = FALSE
+#       )
 
-def generate_catalog(path: Path | None = None, db: str = ""):
-    full_path: Path = DATA_PATH / path if path is not None else DATA_PATH
-    csv_files: list[Path] = [
-        file
-        for file in full_path.iterdir()
-        if (file.suffix == ".csv") and ("catalogo" not in file.stem)
-    ]
+#       # remove duplicated column names from the csv file
+#       csv_datos <- csv_datos[ , !duplicated(colnames(csv_datos))]
 
-    for file in csv_files:
-        print(file.name)
-        data: pd.DataFrame = pd.read_csv(file, encoding="latin1", skipinitialspace=True)
-        data = data.tail(len(data.index) - 5)
-        data = data.loc[:, ~data.columns.duplicated()]
-        data.columns.values[0] = "fecha"
-        data = data.loc[~data["fecha"].isin(["FUENTE", "NOTAS"]), :]
-        data["fecha"] = data["fecha"].astype(str).apply(__convert_date)
+#       csv_datos_procesado <- csv_datos |>
+#         utils::tail(nrow(csv_datos) - 6) |>
+#         dplyr::rename(fecha=1) |>
+#         dplyr::filter(fecha != "FUENTE" & fecha != "NOTAS") |> # & valores != "_") |>
+#         dplyr::mutate(fecha = dplyr::if_else(stringr::str_length(fecha) == 4,
+#                                              as.Date(paste0("01 01 ", fecha), format="%d %m %Y"),
+#                                              dplyr::if_else(stringr::str_length(fecha) == 8,
+#                                                             as.Date(timeDate::timeLastDayInMonth(as.Date(paste0("01 ",
+#                                                                                                                 stringr::str_to_sentence(paste0(stringr::str_sub(fecha, 1,3),
+#                                                                                                                                                 ". ",
+#                                                                                                                                                 stringr::str_sub(fecha,5,8)))),
+#                                                                                                          "%d %b %Y"))),
+#                                                           as.Date(paste0(stringr::str_sub(fecha, 1,2),
+#                                                                          " ",
+#                                                                          stringr::str_to_sentence(paste0(stringr::str_sub(fecha, 4,6))),
+#                                                                          ". ",
+#                                                                          stringr::str_sub(fecha,8,11)), format="%d %b %Y")
+#                                            )))
+
+#     fecha_minima <- min(csv_datos_procesado$fecha)
+#     fecha_maxima <- max(csv_datos_procesado$fecha)
+
+#     # some csvs have a malformed structure in which row 4 of first column does not contain the units, but the description
+#     # while having at row 3 a (possibly) irrelevant description.
+#     # this needs to be accounted for. If it's the case, variable offset_serie will be set to one
+#     short_csv_format <- FALSE
+
+#     # some csvs do not contain FUENTE
+#     withoutfuente <- FALSE
+
+#     if (csv_datos[4,1] != "DESCRIPCIÓN DE LAS UNIDADES") {
+#       # some csvs contain only three headers, and then continue to having dates:
+#       if (stringr::str_detect(csv_datos_procesado[4], "FUENTE") |  stringr::str_detect(csv_datos_procesado[5], "FUENTE")) {
+#         offset_serie <- 1
+#         # cuando la tercera fila contiene una fecha
+#         } else if(stringr::str_detect(csv_datos_procesado[[1]][4], "\\b\\d{4}\\b")) {
+#         short_csv_format <- TRUE
+#       }
+#     } else {
+#       offset_serie <- 0
+#     }
+
+#     series_en_csv_df <- lapply(
+#       X=(names(csv_datos)) |> _[-1],
+#       FUN=function(columna) {
+
+#       descripcion <- stringr::str_remove(csv_datos[[columna]][3], pattern="Descripción de la DSD:")
+#       alias <- as.character(csv_datos[[columna]][2])
+
+#       # some series' descriptions contain a description of the unit instead of the description itself
+#       # in these cases, alias is used to fill up descripcion field.
+#       if (!grepl("Miles de Euros", descripcion) &
+#           (descripcion != "Euros") &
+#           (descripcion != "Años") &
+#           (descripcion != "Monedas") &
+#           (descripcion != "Billetes") &
+#           (descripcion != "Porcentaje") &
+#           (!is.na(descripcion))) {
+#         descripcion <- descripcion
+#       } else {
+#         descripcion <- alias
+#       }
+
+#       serie_cf <- dplyr::tibble(nombre=columna,
+#                                 numero=as.character(csv_datos[[columna]][1]),
+#                                 alias=alias,
+#                                 fichero=.x,
+#                                 descripcion=descripcion,
+#                                 tipo="",
+#                                 unidades=dplyr::if_else(short_csv_format,
+#                                                  "",
+#                                                  dplyr::if_else(is.na(csv_datos[[columna]][4+offset_serie]),
+#                                                                 "",
+#                                                                 as.character(csv_datos[[columna]][4+offset_serie]))),
+#                                 exponente="",
+#                                 decimales="",
+#                                 descripcion_unidades_exponente="",
+#                                 frecuencia=dplyr::if_else(short_csv_format,
+#                                                    "",
+#                                                    dplyr::if_else(is.na(csv_datos[[columna]][5+offset_serie]),
+#                                                                   "",
+#                                                                   as.character(csv_datos[[columna]][5+offset_serie]))),
+#                                 fecha_primera_observacion=fecha_minima,
+#                                 fecha_ultima_observacion=fecha_maxima,
+#                                 numero_observaciones=nrow(csv_datos_procesado[columna]),
+#                                 titulo="",
+#                                 fuente=as.character(csv_datos[[columna]][length(csv_datos[[columna]])-1]),
+#                                 notas="",
+#                                 db=db)
+#       return(serie_cf)
+
+#       }
+#     ) |> dplyr::bind_rows()
+
+#     csv_file_counter <<- csv_file_counter + 1
+
+#     return(series_en_csv_df)
+#     }
+#   ) |>
+#     dplyr::bind_rows() |>
+#     dplyr::ungroup() |>
+#     dplyr::mutate( # extraer de la ruta al fichero todos los directorios
+#       fichero = stringr::str_extract(fichero, "(?<=bdeseries/).*$")
+#     )
+
+#   # remove duplicated column names again from the full catalog
+#   catalogo <- catalogo[ , !duplicated(colnames(catalogo))]
+
+#   return(catalogo)
+
+# }
