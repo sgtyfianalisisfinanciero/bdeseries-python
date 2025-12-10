@@ -1,6 +1,7 @@
 from bdeseries.utils.utils import (
     create_data_dir,
     get_data_path,
+    get_finantial_accounts_path,
     is_writable,
     set_data_path,
 )
@@ -8,6 +9,7 @@ from bdeseries.utils.utils import (
 __all__ = [
     "create_data_dir",
     "get_data_path",
+    "get_finantial_accounts_path",
     "is_writable",
     "set_data_path",
 ]

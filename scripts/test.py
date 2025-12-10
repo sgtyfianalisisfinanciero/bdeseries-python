@@ -1,6 +1,13 @@
+import logging
 from pathlib import Path
 
 import bdeseries
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
+
 
 ROOT: Path = Path(__file__).parent.parent
 DATA: Path = ROOT / "data"

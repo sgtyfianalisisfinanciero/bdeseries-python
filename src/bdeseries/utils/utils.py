@@ -1,10 +1,12 @@
 import os
 from pathlib import Path
+from typing import Final
 
 from platformdirs import user_data_dir
 
-APPNAME: str = "bdeseries"
-ENV: str = "BDESERIES_DATA_PATH"
+APPNAME: Final[str] = "bdeseries"
+ENV: Final[str] = "BDESERIES_DATA_PATH"
+FINANTIAL_ACCOUNTS_ALIAS: Final[str] = "cf"
 
 # cache to avoid recomputing over and over again
 DATA_PATH: Path | None = None
@@ -34,6 +36,11 @@ def get_data_path() -> Path:
     return DATA_PATH
 
 
+def get_finantial_accounts_path() -> Path:
+    """Devuelve la ruta donde se almacenan los datos de cuenta financiera"""
+    return get_data_path() / FINANTIAL_ACCOUNTS_ALIAS
+
+
 def set_data_path(path: Path | str) -> Path:
     """Fija manualmente la ruta donde se almacenarán los datos"""
     global DATA_PATH
@@ -50,11 +57,12 @@ def set_data_path(path: Path | str) -> Path:
     return DATA_PATH
 
 
-def create_data_dir() -> Path:
+def create_data_dir() -> None:
     """Crea el directorio donde se almacenarán los datos"""
     data_path: Path = get_data_path()
+    financial_accounts_path: Path = get_finantial_accounts_path()
     data_path.mkdir(parents=True, exist_ok=True)
-    return data_path
+    financial_accounts_path.mkdir(parents=True, exist_ok=True)
 
 
 def is_writable(path: Path | None = None) -> bool:

@@ -1,21 +1,27 @@
 import asyncio
+import logging
 import tempfile
 import zipfile
 from datetime import datetime
 from pathlib import Path
+from typing import Final
 
 import aiohttp
 
-from bdeseries.utils.utils import get_data_path
+from bdeseries.utils.utils import get_data_path, get_finantial_accounts_path
 
-URL: str = "https://www.bde.es/webbe/es/estadisticas/compartido/datos/zip/"
+logger: logging.Logger = logging.getLogger(__name__)
 
-ZIPS: dict[str, str] = {
+FINANTIAL_ACCOUNTS: Final[str] = "TE_CF"
+
+URL: Final[str] = "https://www.bde.es/webbe/es/estadisticas/compartido/datos/zip/"
+
+ZIPS: Final[dict[str, str]] = {
     "be": "Boletín estadístico",
     "si": "Síntesis de indicadores",
     "ti": "Tipos de interés",
     "pb": "",
-    "TE_CF": "",
+    FINANTIAL_ACCOUNTS: "",
 }
 
 
@@ -37,7 +43,7 @@ async def download_file(url: str, filename: Path):
                     if not chunk:
                         break
                     file.write(chunk)
-                print(f"Downloaded file {filename}")
+                logger.info(f"Downloaded file {filename}")
 
 
 async def download_files():
@@ -48,9 +54,11 @@ async def download_files():
         for file in ZIPS:
             url: str = f"{URL}{file}.zip"
             extract_dir: Path = (
-                get_data_path() if file != "TE_CF" else get_data_path() / "cf"
+                get_data_path()
+                if file != FINANTIAL_ACCOUNTS
+                else get_finantial_accounts_path()
             )
-            filename = Path(tmpdirname) / f"{file}.zip"
+            filename: Path = Path(tmpdirname) / f"{file}.zip"
             parameters.append((url, extract_dir, filename))
 
         tasks = [download_file(url, filename) for url, _, filename in parameters]
@@ -59,7 +67,7 @@ async def download_files():
         for _, extract_dir, filename in parameters:
             with zipfile.ZipFile(filename, "r") as zip_ref:
                 zip_ref.extractall(extract_dir)
-                print(f"Unzipped {filename.name}")
+                logger.info(f"Unzipped {filename.name}")
 
 
 def download(force_download: bool = False):

@@ -1,12 +1,11 @@
-from pathlib import Path
+import logging
 
 from bdeseries.download import download
 from bdeseries.utils import create_data_dir
 
-_INITIALIZED: bool = False
+logger: logging.Logger = logging.getLogger(__name__)
 
-DATA_PATH: Path | None = None
-FINANCIAL_ACCOUNTS_PATH: Path | None = None
+_INITIALIZED: bool = False
 
 
 def initialize(*, download_catalog: bool = False) -> None:
@@ -17,15 +16,15 @@ def initialize(*, download_catalog: bool = False) -> None:
     - Opcionalmente, descarga el catálogo de datos y/o lo regenera.
     """
 
-    global _INITIALIZED, DATA_PATH, FINANCIAL_ACCOUNTS_PATH
+    global _INITIALIZED
 
     # si el entorno ya está inicializado, omitimos
     if _INITIALIZED:
+        logger.info("bdeseries is already initialized")
         return
 
-    DATA_PATH = create_data_dir()
-    FINANCIAL_ACCOUNTS_PATH = DATA_PATH / "cf"
-    FINANCIAL_ACCOUNTS_PATH.mkdir(parents=True, exist_ok=True)
+    logger.info("initializing bdeseries...")
+    create_data_dir()
 
     if download_catalog:
         download(force_download=True)
