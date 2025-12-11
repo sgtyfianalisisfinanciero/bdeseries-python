@@ -4,7 +4,7 @@ from pathlib import Path
 import bdeseries
 
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.WARNING,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 

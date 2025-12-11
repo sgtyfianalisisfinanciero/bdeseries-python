@@ -18,10 +18,10 @@ CATALOG_FLAG: Final[str] = "catalogo"
 
 INITIAL_ROWS_TO_IGNORE: Final[int] = 6
 
-DATE_COLUMN_NAME: Final[str] = "fecha"
-DATE_COLUMN_POS: Final[int] = 0
+DATE: Final[str] = "fecha"
 
 FAKE_DATES: Final[list[str]] = ["FUENTE", "NOTAS"]
+UNIT_DESCRIPTION: Final[str] = "DESCRIPCIÓN DE LAS UNIDADES"
 
 
 @dataclass(frozen=True)
@@ -45,84 +45,132 @@ class Months(Enum):
     DECEMBER = Month(abbr="DIC", num=12)
 
 
-def _parse_date(raw_date_series: pd.Series, file: Path) -> pd.Series:
-    year_length: Final[int] = 4
-    day_length: Final[int] = 2
-    month_abbrs: Final[set[str]] = {m.value.abbr for m in Months}
-    abbr_to_num: Final[dict[str, int]] = {m.value.abbr: m.value.num for m in Months}
-    regex_month_abbrs: Final[str] = "|".join(month_abbrs)
+# ver cómo estructurar esto mejor semánticamente
+class DateFormat(Enum):
+    YEAR = 1
+    MONTH_YEAR = 1
+    DAY_MONTH_YEAR = 1
 
-    ##### confeccionamos las máscaras para los tres posibles formatos de fecha
-    # año
-    regex_year: str = rf"^(\d{{{year_length}}})$"
-    format_year_mask: pd.Series = raw_date_series.str.fullmatch(regex_year)
 
-    # abreviatura de mes + año
-    regex_month_year: str = rf"^({regex_month_abbrs}) (\d{{{year_length}}})$"
-    format_month_year_mask: pd.Series = raw_date_series.str.fullmatch(regex_month_year)
+# regular expressions for dates
+MONTH_ABBRS: Final[set[str]] = {m.value.abbr for m in Months}
+REGEX_MONTH_ABBRS: Final[str] = "|".join(MONTH_ABBRS)
+YEAR_LENGTH: Final[int] = 4
+DAY_LENGTH: Final[int] = 2
+REGEX_YEAR: str = rf"^(\d{{{YEAR_LENGTH}}})$"
+REGEX_MONTH_YEAR: str = rf"^({REGEX_MONTH_ABBRS}) (\d{{{YEAR_LENGTH}}})$"
+REGEX_DAY_MONTH_YEAR: str = (
+    rf"^(\d{{{DAY_LENGTH}}}) ({REGEX_MONTH_ABBRS})\s*(\d{{{YEAR_LENGTH}}})$"
+)
 
-    # día + abreviatura de mes + año
-    regex_day_month_year: str = (
-        rf"^(\d{{{day_length}}}) ({regex_month_abbrs})\s*(\d{{{year_length}}})$"
-    )
-    format_day_month_year_mask: pd.Series = raw_date_series.str.fullmatch(
-        regex_day_month_year
-    )
 
-    ##### hacemos un sanity check
-    other_mask: pd.Series = ~(
-        format_year_mask | format_month_year_mask | format_day_month_year_mask
-    )
-    if len(raw_date_series[other_mask].index) > 0:
-        logger.warning(
-            f"In {file.name} the following dates are ill-formatted:\n{raw_date_series[other_mask]}"
-        )
+def _format_dates(raw: pd.Index) -> pd.Index:
+    # máscaras para fechas (este cálculo está duplicado, ver cómo solucionar esto)
+    # entiendo que solo se puede tener un formato de fecha dentro de un mismo dataframe, no debería ser problema
+    year_mask: pd.Series = raw.str.fullmatch(REGEX_YEAR)
+    month_year_mask: pd.Series = raw.str.fullmatch(REGEX_MONTH_YEAR)
+    day_month_year_mask: pd.Series = raw.str.fullmatch(REGEX_DAY_MONTH_YEAR)
 
     ##### creamos la plantilla de la serie de salida
-    formatted_date_series: pd.Series = pd.Series(
-        pd.NaT, index=raw_date_series.index, dtype="datetime64[ns]"
-    )
+    formatted: pd.Index = pd.Index(pd.NaT, dtype="datetime64[ns]")
+
+    abbr_to_num: Final[dict[str, int]] = {m.value.abbr: m.value.num for m in Months}
 
     ##### transformamos las fechas
     # año
-    aux = raw_date_series.loc[format_year_mask].str.extract(regex_year)
+    aux = raw[year_mask].str.extract(REGEX_YEAR)
     aux.columns = ["year"]
     aux["day"] = 1
     aux["month"] = 1
     aux["year"] = pd.to_numeric(aux["year"], errors="coerce")
-    formatted_date_series.loc[format_year_mask] = pd.to_datetime(
+    formatted.loc[year_mask] = pd.to_datetime(
         aux[["year", "month", "day"]], errors="coerce"
     )
 
     # abreviatura de mes + año
-    aux = raw_date_series.loc[format_month_year_mask].str.extract(regex_month_year)
+    aux = raw[month_year_mask].str.extract(REGEX_MONTH_YEAR)
     aux.columns = ["abbr", "year"]
     aux["day"] = 1
     aux["month"] = aux["abbr"].map(abbr_to_num)
     aux["year"] = pd.to_numeric(aux["year"], errors="coerce")
-    formatted_date_series.loc[format_month_year_mask] = pd.to_datetime(
+    formatted.loc[month_year_mask] = pd.to_datetime(
         aux[["year", "month", "day"]], errors="coerce"
     ) + MonthEnd(0)
 
     # día + abreviatura de mes + año
-    aux = raw_date_series.loc[format_day_month_year_mask].str.extract(
-        regex_day_month_year
-    )
+    aux = raw[day_month_year_mask].str.extract(REGEX_DAY_MONTH_YEAR)
     aux.columns = ["day", "abbr", "year"]
     aux["day"] = pd.to_numeric(aux["day"], errors="coerce")
     aux["month"] = aux["abbr"].map(abbr_to_num)
     aux["year"] = pd.to_numeric(aux["year"], errors="coerce")
-    formatted_date_series.loc[format_day_month_year_mask] = pd.to_datetime(
+    formatted.loc[day_month_year_mask] = pd.to_datetime(
+        aux[["year", "month", "day"]], errors="coerce"
+    )
+
+
+def _split_index(raw: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+    # máscaras para fechas
+    year_mask: pd.Series = raw.index.str.fullmatch(REGEX_YEAR)
+    month_year_mask: pd.Series = raw.index.str.fullmatch(REGEX_MONTH_YEAR)
+    day_month_year_mask: pd.Series = raw.index.str.fullmatch(REGEX_DAY_MONTH_YEAR)
+
+    # máscara de datos y metadados
+    data_mask: pd.Series = year_mask | month_year_mask | day_month_year_mask
+    metadata_mask: pd.Series = ~(data_mask)
+
+    # TODO: sanity check para comprobar que los metadatos son válidos
+
+    data: pd.DataFrame = raw.loc[data_mask, :]
+    metadata: pd.DataFrame = raw.loc[metadata_mask, :]
+    return data, metadata
+
+    ##### creamos la plantilla de la serie de salida
+    formatted_date_series: pd.Series = pd.Series(
+        pd.NaT, index=raw.index, dtype="datetime64[ns]"
+    )
+
+    ##### transformamos las fechas
+    # año
+    aux = raw.loc[year_mask].str.extract(REGEX_YEAR)
+    aux.columns = ["year"]
+    aux["day"] = 1
+    aux["month"] = 1
+    aux["year"] = pd.to_numeric(aux["year"], errors="coerce")
+    formatted_date_series.loc[year_mask] = pd.to_datetime(
+        aux[["year", "month", "day"]], errors="coerce"
+    )
+
+    # abreviatura de mes + año
+    aux = raw.loc[month_year_mask].str.extract(REGEX_MONTH_YEAR)
+    aux.columns = ["abbr", "year"]
+    aux["day"] = 1
+    aux["month"] = aux["abbr"].map(abbr_to_num)
+    aux["year"] = pd.to_numeric(aux["year"], errors="coerce")
+    formatted_date_series.loc[month_year_mask] = pd.to_datetime(
+        aux[["year", "month", "day"]], errors="coerce"
+    ) + MonthEnd(0)
+
+    # día + abreviatura de mes + año
+    aux = raw.loc[day_month_year_mask].str.extract(REGEX_DAY_MONTH_YEAR)
+    aux.columns = ["day", "abbr", "year"]
+    aux["day"] = pd.to_numeric(aux["day"], errors="coerce")
+    aux["month"] = aux["abbr"].map(abbr_to_num)
+    aux["year"] = pd.to_numeric(aux["year"], errors="coerce")
+    formatted_date_series.loc[day_month_year_mask] = pd.to_datetime(
         aux[["year", "month", "day"]], errors="coerce"
     )
 
     ##### sanity check final
-    if len(formatted_date_series[formatted_date_series.isna()].index) > 0:
+    if len(formatted_date_series[formatted_date_series.isna()].index) > 0 and False:
         logger.warning(
-            f"In {file.name} the following dates could not be properly transformed:\n{raw_date_series[formatted_date_series.isna()]}"
+            f"In {file.name} the following dates could not be properly transformed:\n{raw[formatted_date_series.isna()]}"
         )
 
-    return formatted_date_series
+    return formatted_date_series, header_size
+
+
+def _extract_metadata(data: pd.DataFrame):
+    pass
 
 
 def generate_catalog(directory: str | None = None, db: str | None = None):
@@ -150,42 +198,44 @@ def generate_catalog(directory: str | None = None, db: str | None = None):
             logger.info(f"Omitiendo {file.name}")
             continue
 
-        data: pd.DataFrame = pd.read_csv(
-            file,
-            encoding="latin1",
-        )
+        raw: pd.DataFrame = pd.read_csv(file, encoding="latin1", index_col=0)
+
+        # TODO: we should preprocess the metadata first
 
         ##### preprocessing dataframe #####
         # is this really necessary?
         # trim whitespace
         # remove duplicated column names (i guess it is)
 
-        # remove the first crappy rows
-        data = data.iloc[INITIAL_ROWS_TO_IGNORE:]
-        data.columns.values[DATE_COLUMN_POS] = DATE_COLUMN_NAME
-        data = data.loc[~data[DATE_COLUMN_NAME].isin(FAKE_DATES), :]
+        data, metadata = _split_index(raw)
+        data.index = _format_dates(data.index)
+        print(metadata)
 
-        # si en la fecha está solo el año (longitud 4), poner la referencia a 1 de enero
-        # si en la fecha está el mes y el año (longitud 8), poner la referencia a día 1 de mes
-        # si la fecha está entera se pone todo
+        # only_data = raw.iloc[INITIAL_ROWS_TO_IGNORE:]
+        # only_data = only_data.loc[~only_data[DATE].isin(FAKE_DATES), :]
 
-        data[DATE_COLUMN_NAME] = _parse_date(data[DATE_COLUMN_NAME], file)
+        # min_date = raw[DATE].min()
+        # max_date = raw[DATE].max()
 
-        min_date = data[DATE_COLUMN_NAME].min()
-        max_date = data[DATE_COLUMN_NAME].max()
+        # now we care about metadata
+        # if raw.iloc[3, 0] != UNIT_DESCRIPTION and False:
+        #     logger.warning(f"{file.name}\n{raw.iloc[3, 0]}")
 
 
 #   catalogo <- lapply(
 #     X=csv_files,
 #     function(.x) {
 
+
 #     # some csvs have a malformed structure in which row 4 of first column does not contain the units, but the description
 #     # while having at row 3 a (possibly) irrelevant description.
 #     # this needs to be accounted for. If it's the case, variable offset_serie will be set to one
 #     short_csv_format <- FALSE
 
+
 #     # some csvs do not contain FUENTE
 #     withoutfuente <- FALSE
+
 
 #     if (csv_datos[4,1] != "DESCRIPCIÓN DE LAS UNIDADES") {
 #       # some csvs contain only three headers, and then continue to having dates:
@@ -198,6 +248,7 @@ def generate_catalog(directory: str | None = None, db: str | None = None):
 #     } else {
 #       offset_serie <- 0
 #     }
+
 
 #     series_en_csv_df <- lapply(
 #       X=(names(csv_datos)) |> _[-1],
