@@ -13,15 +13,14 @@ from bdeseries.utils.utils import get_data_path
 
 logger: logging.Logger = logging.getLogger(__name__)
 
+
+class DateFormatError(Exception):
+    def __init__(self, date_masks: dict[str, pd.Series]):
+        super().__init__("Dataframe with several date formats")
+        self.date_masks = date_masks
+
+
 CATALOG_FLAG: Final[str] = "catalogo"
-
-
-INITIAL_ROWS_TO_IGNORE: Final[int] = 6
-
-DATE: Final[str] = "fecha"
-
-FAKE_DATES: Final[list[str]] = ["FUENTE", "NOTAS"]
-UNIT_DESCRIPTION: Final[str] = "DESCRIPCIÓN DE LAS UNIDADES"
 
 
 @dataclass(frozen=True)
@@ -45,13 +44,6 @@ class Months(Enum):
     DECEMBER = Month(abbr="DIC", num=12)
 
 
-# ver cómo estructurar esto mejor semánticamente
-class DateFormat(Enum):
-    YEAR = 1
-    MONTH_YEAR = 1
-    DAY_MONTH_YEAR = 1
-
-
 # regular expressions for dates
 MONTH_ABBRS: Final[set[str]] = {m.value.abbr for m in Months}
 REGEX_MONTH_ABBRS: Final[str] = "|".join(MONTH_ABBRS)
@@ -64,113 +56,75 @@ REGEX_DAY_MONTH_YEAR: str = (
 )
 
 
-def _format_dates(raw: pd.Index) -> pd.Index:
-    # máscaras para fechas (este cálculo está duplicado, ver cómo solucionar esto)
-    # entiendo que solo se puede tener un formato de fecha dentro de un mismo dataframe, no debería ser problema
-    year_mask: pd.Series = raw.str.fullmatch(REGEX_YEAR)
-    month_year_mask: pd.Series = raw.str.fullmatch(REGEX_MONTH_YEAR)
-    day_month_year_mask: pd.Series = raw.str.fullmatch(REGEX_DAY_MONTH_YEAR)
+@dataclass(frozen=True)
+class DateFormat:
+    regex: str
 
-    ##### creamos la plantilla de la serie de salida
-    formatted: pd.Index = pd.Index(pd.NaT, dtype="datetime64[ns]")
 
+class DateFormats(Enum):
+    YEAR = DateFormat(regex=REGEX_YEAR)
+    MONTH_YEAR = DateFormat(regex=REGEX_MONTH_YEAR)
+    DAY_MONTH_YEAR = DateFormat(regex=REGEX_DAY_MONTH_YEAR)
+
+
+def _format_dates(raw_dates: pd.Index, date_format: DateFormats) -> pd.Series:
     abbr_to_num: Final[dict[str, int]] = {m.value.abbr: m.value.num for m in Months}
+    aux = raw_dates.str.extract(date_format.value.regex)
 
-    ##### transformamos las fechas
-    # año
-    aux = raw[year_mask].str.extract(REGEX_YEAR)
-    aux.columns = ["year"]
-    aux["day"] = 1
-    aux["month"] = 1
-    aux["year"] = pd.to_numeric(aux["year"], errors="coerce")
-    formatted.loc[year_mask] = pd.to_datetime(
-        aux[["year", "month", "day"]], errors="coerce"
-    )
-
-    # abreviatura de mes + año
-    aux = raw[month_year_mask].str.extract(REGEX_MONTH_YEAR)
-    aux.columns = ["abbr", "year"]
-    aux["day"] = 1
-    aux["month"] = aux["abbr"].map(abbr_to_num)
-    aux["year"] = pd.to_numeric(aux["year"], errors="coerce")
-    formatted.loc[month_year_mask] = pd.to_datetime(
-        aux[["year", "month", "day"]], errors="coerce"
-    ) + MonthEnd(0)
-
-    # día + abreviatura de mes + año
-    aux = raw[day_month_year_mask].str.extract(REGEX_DAY_MONTH_YEAR)
-    aux.columns = ["day", "abbr", "year"]
-    aux["day"] = pd.to_numeric(aux["day"], errors="coerce")
-    aux["month"] = aux["abbr"].map(abbr_to_num)
-    aux["year"] = pd.to_numeric(aux["year"], errors="coerce")
-    formatted.loc[day_month_year_mask] = pd.to_datetime(
-        aux[["year", "month", "day"]], errors="coerce"
-    )
+    match date_format:
+        case DateFormats.YEAR:
+            aux.columns = ["year"]
+            aux["day"] = 1
+            aux["month"] = 1
+            aux["year"] = pd.to_numeric(aux["year"], errors="coerce")
+            return pd.to_datetime(aux[["year", "month", "day"]], errors="coerce")
+        case DateFormats.MONTH_YEAR:
+            aux.columns = ["abbr", "year"]
+            aux["day"] = 1
+            aux["month"] = aux["abbr"].map(abbr_to_num)
+            aux["year"] = pd.to_numeric(aux["year"], errors="coerce")
+            return pd.to_datetime(
+                aux[["year", "month", "day"]], errors="coerce"
+            ) + MonthEnd(0)
+        case DateFormats.DAY_MONTH_YEAR:
+            aux.columns = ["day", "abbr", "year"]
+            aux["day"] = pd.to_numeric(aux["day"], errors="coerce")
+            aux["month"] = aux["abbr"].map(abbr_to_num)
+            aux["year"] = pd.to_numeric(aux["year"], errors="coerce")
+            return pd.to_datetime(aux[["year", "month", "day"]], errors="coerce")
 
 
-def _split_index(raw: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+def _get_date_format(masks: dict[str, pd.Series]) -> DateFormats | None:
+    non_empty_masks: list[int] = [name for name, mask in masks.items() if mask.any()]
+    if len(non_empty_masks) != 1:
+        logger.error("Dataframe con varios formatos de fecha")
+        return None
+    return DateFormats[non_empty_masks[0]]
+
+
+def _split_data(raw: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
     # máscaras para fechas
-    year_mask: pd.Series = raw.index.str.fullmatch(REGEX_YEAR)
-    month_year_mask: pd.Series = raw.index.str.fullmatch(REGEX_MONTH_YEAR)
-    day_month_year_mask: pd.Series = raw.index.str.fullmatch(REGEX_DAY_MONTH_YEAR)
+    date_masks: dict[str, pd.Series] = {
+        date_format.name: raw.index.str.fullmatch(date_format.value.regex)
+        for date_format in DateFormats
+    }
+
+    # determina el formato de fecha que usa el dataframe
+    date_format: DateFormats | None = _get_date_format(date_masks)
+    if date_format is None:
+        raise DateFormatError(date_masks)
 
     # máscara de datos y metadados
-    data_mask: pd.Series = year_mask | month_year_mask | day_month_year_mask
+    data_mask: pd.Series = date_masks[date_format.name]
     metadata_mask: pd.Series = ~(data_mask)
 
     # TODO: sanity check para comprobar que los metadatos son válidos
 
-    data: pd.DataFrame = raw.loc[data_mask, :]
-    metadata: pd.DataFrame = raw.loc[metadata_mask, :]
+    data: pd.DataFrame = raw.loc[data_mask, :].copy()
+    data.index = _format_dates(raw_dates=data.index, date_format=date_format)
+
+    metadata: pd.DataFrame = raw.loc[metadata_mask, :].copy()
     return data, metadata
-
-    ##### creamos la plantilla de la serie de salida
-    formatted_date_series: pd.Series = pd.Series(
-        pd.NaT, index=raw.index, dtype="datetime64[ns]"
-    )
-
-    ##### transformamos las fechas
-    # año
-    aux = raw.loc[year_mask].str.extract(REGEX_YEAR)
-    aux.columns = ["year"]
-    aux["day"] = 1
-    aux["month"] = 1
-    aux["year"] = pd.to_numeric(aux["year"], errors="coerce")
-    formatted_date_series.loc[year_mask] = pd.to_datetime(
-        aux[["year", "month", "day"]], errors="coerce"
-    )
-
-    # abreviatura de mes + año
-    aux = raw.loc[month_year_mask].str.extract(REGEX_MONTH_YEAR)
-    aux.columns = ["abbr", "year"]
-    aux["day"] = 1
-    aux["month"] = aux["abbr"].map(abbr_to_num)
-    aux["year"] = pd.to_numeric(aux["year"], errors="coerce")
-    formatted_date_series.loc[month_year_mask] = pd.to_datetime(
-        aux[["year", "month", "day"]], errors="coerce"
-    ) + MonthEnd(0)
-
-    # día + abreviatura de mes + año
-    aux = raw.loc[day_month_year_mask].str.extract(REGEX_DAY_MONTH_YEAR)
-    aux.columns = ["day", "abbr", "year"]
-    aux["day"] = pd.to_numeric(aux["day"], errors="coerce")
-    aux["month"] = aux["abbr"].map(abbr_to_num)
-    aux["year"] = pd.to_numeric(aux["year"], errors="coerce")
-    formatted_date_series.loc[day_month_year_mask] = pd.to_datetime(
-        aux[["year", "month", "day"]], errors="coerce"
-    )
-
-    ##### sanity check final
-    if len(formatted_date_series[formatted_date_series.isna()].index) > 0 and False:
-        logger.warning(
-            f"In {file.name} the following dates could not be properly transformed:\n{raw[formatted_date_series.isna()]}"
-        )
-
-    return formatted_date_series, header_size
-
-
-def _extract_metadata(data: pd.DataFrame):
-    pass
 
 
 def generate_catalog(directory: str | None = None, db: str | None = None):
@@ -200,19 +154,15 @@ def generate_catalog(directory: str | None = None, db: str | None = None):
 
         raw: pd.DataFrame = pd.read_csv(file, encoding="latin1", index_col=0)
 
-        # TODO: we should preprocess the metadata first
-
         ##### preprocessing dataframe #####
         # is this really necessary?
         # trim whitespace
         # remove duplicated column names (i guess it is)
 
-        data, metadata = _split_index(raw)
-        data.index = _format_dates(data.index)
-        print(metadata)
-
-        # only_data = raw.iloc[INITIAL_ROWS_TO_IGNORE:]
-        # only_data = only_data.loc[~only_data[DATE].isin(FAKE_DATES), :]
+        try:
+            data, metadata = _split_data(raw)
+        except DateFormatError as e:
+            logger.error(f"Date format error in {file.name}", e.date_masks)
 
         # min_date = raw[DATE].min()
         # max_date = raw[DATE].max()
